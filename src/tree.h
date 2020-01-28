@@ -60,7 +60,7 @@ struct ht_node {
 // desc has to be 0-terminated, as that is the only way of getting
 // a char array out of R.
 int check_state(const char *desc, int al_offset, int al_size);
-bool check_tree( struct h_tree *tree, int al_offset, int al_size );
+bool check_tree( struct h_tree *tree );
 
 struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_n, int leaf_n,
 			int dim_n, const char **leaf_states, int al_offset, int al_size);
