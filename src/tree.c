@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <string.h>
 #include "tree.h"
 
 // this is the biggest value that can be multiplied by 2 and still give
@@ -21,7 +23,7 @@ int check_state(const char *desc, int al_offset, int al_size){
 // confirm that the information provided is correct... 
 void check_tree(struct h_tree *tree){
   tree->is_good = true;
-  for(int i=0; i < leaf_n; ++i){
+  for(int i=0; i < tree->leaf_n; ++i){
     int c = check_state( tree->leaf_states[i], tree->al_offset, tree->al_size );
     if(c != tree->dim_n){
       tree->is_good = false;
@@ -31,17 +33,17 @@ void check_tree(struct h_tree *tree){
   // also check that there are leaf_n leaf nodes and that
   // these are numbered from 1:leaf_n in the edge_child array..
   // do this by counting the number of children
-  unsigned int *child_count = malloc(sizeof(unsigned int) * node_n);
-  unsigned int *parent_count = malloc(sizeof(unsigned int) * node_n);
-  memset( child_count, 0, sizeof(unsinged int) * node_n );
-  memset( parent_count, 0, sizeof(unsinged int) * node_n );
+  unsigned int *child_count = malloc(sizeof(unsigned int) * tree->node_n);
+  unsigned int *parent_count = malloc(sizeof(unsigned int) * tree->node_n);
+  memset( child_count, 0, sizeof(unsigned int) * tree->node_n );
+  memset( parent_count, 0, sizeof(unsigned int) * tree->node_n );
   // here parent_count means the number of times an index appears in the
   // the parent array. That is equivalent to the number of children a
   // given parent has. 
-  for(int i=0; i < tree->edge_n; ++){
+  for(int i=0; i < tree->edge_n; i++){
     int p_i = tree->edge_parent[i] - 1;
     int c_i = tree->edge_child[i] - 1;
-    if(p_i >= 0 && c_i >= 0 && p_i < tree->node_n && p_c < tree->node_n){
+    if(p_i >= 0 && c_i >= 0 && p_i < tree->node_n && c_i < tree->node_n){
       parent_count[p_i]++;
       child_count[c_i]++;
     }else{
@@ -53,10 +55,10 @@ void check_tree(struct h_tree *tree){
   // children and make sure that these have appropriate indices
   // We can also count the number of parents
   int n = 0;
-  for(int i=0; i < node_n; ++i){
+  for(int i=0; i < tree->node_n; ++i){
     if( parent_count[i] == 0 ){
       n++;
-      if( i >= leaf_n )
+      if( i >= tree->leaf_n )
 	tree->is_good = false;
     }
   }
@@ -68,7 +70,7 @@ void check_tree(struct h_tree *tree){
 }
 
 struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_n, int leaf_n,
-			int dim_n, const char **leaf_states){
+			int dim_n, const char **leaf_states, int al_offset, int al_size){
   struct h_tree tree;
   tree.node_n = node_n;
   tree.leaf_n = leaf_n;
@@ -88,13 +90,13 @@ struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_
 // Return an array of nodes..
 // Where the leaf nodes have set the
 struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
-  struct ht_node *nodes = malloc( sizeof(ht_node) * tree->node_no );
-  memset( *nodes, 0, sizeof(ht_node) * tree->node_no );
+  struct ht_node *nodes = malloc( sizeof(struct ht_node) * tree->node_n );
+  memset( nodes, 0, sizeof(struct ht_node) * tree->node_n );
   // then we go through the parent and child arrays.. and assign.
   for(int i=0; i < tree->edge_n; ++i){
     int p_i = tree->edge_parent[i] - 1;
     int c_i = tree->edge_child[i] - 1;
-    if(p_i >= 0 && c_i >= 0 && p_i < tree->node_n && p_c < tree->node_n){
+    if(p_i >= 0 && c_i >= 0 && p_i < tree->node_n && p_i < tree->node_n){
       if( nodes[p_i].edge_n < 3 ){
 	nodes[p_i].edges[ nodes[p_i].edge_n ] = &nodes[c_i];
 	nodes[p_i].is_child[ nodes[p_i].edge_n ] = true;
@@ -127,17 +129,26 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
       // Default to setting all the values to a rather large number,
       // that can just about be multiplied by 2... 
       //      unsigned int cc = ((unsigned int)~0 >> 1);
-      for(int j=0; j < (tree->al_size * tree->dim_n))
+      for(int j=0; j < (tree->al_size * tree->dim_n); ++j)
 	nodes[i].tree_lengths[j] = max_length;
       for(int j=0; j < tree->dim_n; ++j){
-	int o = tree->leaf_states[i] - tree->al_offset;
-	nodes[i].tree_lengths[ j * al_size + o  ] = 0;
+	int o = tree->leaf_states[i][j] - tree->al_offset;
+	nodes[i].tree_lengths[ j * tree->al_size + o  ] = 0;
       }
       nodes[i].length_determined = true;
     }
   }
   // return as an array, since the root has been set we can leave it to the caller to handle everything here..
   return( nodes );
+}
+
+void ht_nodes_free(struct ht_node *nodes, int l){
+  for(int i=0; i < l; ++i){
+    free(nodes[i].tree_lengths);
+    free(nodes[i].child_states_1);
+    free(nodes[i].child_states_2);
+  }
+  free(nodes);
 }
 
 int sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n ){
@@ -149,10 +160,10 @@ int sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, i
   memset( children, 0, sizeof( struct ht_node* ) * 3 );
   int child_count = 0;
   for( int i=0; i < 3; ++i ){
-    if( edges[i] && is_child[i] ){
-      int n = sankoff_set_lengths( edges[i], sub_matrix, al_offset, al_size, dim_n );
-      if(n == 2 && edges[i]->length_determined){
-	children[ child_count ] = edges[i];
+    if( node->edges[i] && node->is_child[i] ){
+      int n = sankoff_set_lengths( node->edges[i], sub_matrix, al_offset, al_size, dim_n );
+      if(n == 2 && node->edges[i]->length_determined){
+	children[ child_count ] = node->edges[i];
 	child_count++;
       }
     }
@@ -186,4 +197,5 @@ int sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, i
   }
   node->length_determined = true;
   // We can then go up this tree in the other direction. And make a prediction.
+  return(child_count);
 }

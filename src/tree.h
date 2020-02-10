@@ -40,7 +40,7 @@ struct h_tree {
 // However, the root node in an unrooted tree (???) has three child connections
 // and leaf nodes have only a single parent connection. 
 struct ht_node {
-  struct *ht_node[3] edges;
+  struct ht_node* edges[3];
   int *tree_lengths;   // signed so we can pass it back to R.
   // The child states from which the tree lengths were inferred
   // these will have the same dimensions as tree_lengths, but we
@@ -60,10 +60,13 @@ struct ht_node {
 // desc has to be 0-terminated, as that is the only way of getting
 // a char array out of R.
 int check_state(const char *desc, int al_offset, int al_size);
-bool check_tree( struct h_tree *tree );
+void check_tree( struct h_tree *tree );
 
 struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_n, int leaf_n,
 			int dim_n, const char **leaf_states, int al_offset, int al_size);
 
-struct ht_node* make_nodes(struct h_tree *tree);
+struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i);
+void ht_nodes_free(struct ht_node *nodes, int l);
+int sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n);
+
 #endif
