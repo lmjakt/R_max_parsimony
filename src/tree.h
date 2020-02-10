@@ -65,5 +65,8 @@ bool check_tree( struct h_tree *tree, int al_offset, int al_size );
 struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_n, int leaf_n,
 			int dim_n, const char **leaf_states, int al_offset, int al_size);
 
-struct ht_node* make_nodes(struct h_tree *tree);
+struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i);
+void ht_nodes_free(ht_node *nodes, int l);
+int sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n);
+
 #endif

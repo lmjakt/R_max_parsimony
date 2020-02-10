@@ -140,6 +140,15 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
   return( nodes );
 }
 
+void ht_nodes_free(ht_node *nodes, int l){
+  for(int i=0; i < l; ++i){
+    free(nodes[i]->tree_lengths);
+    free(nodes[i]->child_states_1);
+    free(nodes[i]->child_states_2);
+  }
+  free(nodes);
+}
+
 int sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n ){
   if( node->length_determined )
     return(2);
