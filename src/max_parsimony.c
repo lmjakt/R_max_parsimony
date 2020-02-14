@@ -85,12 +85,28 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
   // the issue of what to do with the root that has three children but no parents.
   // But in any case it will be necessary to somehow validat the tree before we do anything
   // else.
-
+  SEXP ret_data = PROTECT(allocVector( VECSXP, tree.node_n ));
+  for(int i=0; i < tree.node_n; ++i){
+    // a matrix edges_i 3 columns * 2 (the indices of the edges, and is child)
+    // a matrix of the tree_lengths al_size * dim_n (dim_n in columns)
+    // we can add the child states later, but first let us see how this works.. 
+    SET_VECTOR_ELT(ret_data, i, allocVector(VECSXP, 2));
+    SEXP elt = VECTOR_ELT(ret_data, i);
+    // I think that allocMatrix should be safe with a zero size. But we'll find out
+    SET_VECTOR_ELT(elt, 0, allocMatrix( INTSXP, nodes[i].edge_n, 2 ));
+    SET_VECTOR_ELT(elt, 1, allocMatrix( INTSXP, al_size, dim_n ));
+    int *node_edges = INTEGER(VECTOR_ELT(elt, 0));
+    int *node_lengths = INTEGER(VECTOR_ELT(elt, 1));
+    for(int j=0; j < nodes[i].edge_n; ++j){
+      node_edges[j] = nodes[i].edges_i[j] + 1;  // possibly plus 1?
+      node_edges[j + nodes[i].edge_n] = (int)nodes[i].is_child[j];
+    }
+    memcpy( node_lengths, nodes[i].tree_lengths, sizeof(int) * al_size * dim_n );
+  }
   // But lets see if we can compile it first.
   ht_nodes_free( nodes, tree.node_n );
 
   // make a dummy data set..
-  SEXP ret_data = PROTECT(allocVector( VECSXP, 2 ));
   UNPROTECT(1);
   return(ret_data);
 }

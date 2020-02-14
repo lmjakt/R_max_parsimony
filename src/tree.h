@@ -41,6 +41,8 @@ struct h_tree {
 // and leaf nodes have only a single parent connection. 
 struct ht_node {
   struct ht_node* edges[3];
+  int edges_i[3];
+  bool is_child[3]; 
   int *tree_lengths;   // signed so we can pass it back to R.
   // The child states from which the tree lengths were inferred
   // these will have the same dimensions as tree_lengths, but we
@@ -49,7 +51,6 @@ struct ht_node {
   unsigned char *child_states_1;
   unsigned char *child_states_2;
   unsigned int edge_n;  // maximum of three, so wasteful to make an int
-  bool is_child[3]; 
   bool is_leaf;  // 0 or 1
   bool length_determined;
   // the tree_lengths is a matrix that holds the associated sub-tree length
