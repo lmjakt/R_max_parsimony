@@ -97,14 +97,11 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
   for(int i=0; i < tree->edge_n; ++i){
     int p_i = tree->edge_parent[i] - 1;
     int c_i = tree->edge_child[i] - 1;
-    Rprintf("pi: %d -> ci %d\n", p_i, c_i);
     if(p_i >= 0 && c_i >= 0 && p_i < tree->node_n && p_i < tree->node_n){
-      Rprintf("\tp: %d  c: %d\n", nodes[p_i].edge_n, nodes[c_i].edge_n);
       if( nodes[p_i].edge_n < 3 ){
 	nodes[p_i].edges[ nodes[p_i].edge_n ] = &nodes[c_i];
 	nodes[p_i].edges_i[ nodes[p_i].edge_n ] = c_i;
 	nodes[p_i].is_child[ nodes[p_i].edge_n ] = true;
-	Rprintf("is child? %d -> %d : %d\n", p_i, c_i, nodes[p_i].is_child[ nodes[p_i].edge_n ] );
 	nodes[p_i].edge_n++;
       }
       if( nodes[c_i].edge_n < 3){
@@ -113,7 +110,6 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
 	nodes[c_i].is_child[ nodes[c_i].edge_n ] = false;
 	nodes[c_i].edge_n++;
       }
-      Rprintf("\t\tp: %d  c: %d\n", nodes[p_i].edge_n, nodes[c_i].edge_n);
     }
   }
   // 
@@ -126,17 +122,11 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
       p_count += (nodes[i].is_child[j] == true ? 0 : 1);
     if(p_count == 0)
       *root_i = i;
-    Rprintf("making tree: node %d  p_count %d\n", i, p_count);
     nodes[i].tree_lengths = malloc( sizeof(unsigned int) * tree->al_size * tree->dim_n );
-    nodes[i].child_states_1 = malloc( sizeof(unsigned char) * tree->dim_n );
-    nodes[i].child_states_2 = malloc( sizeof(unsigned char) * tree->dim_n );
-    memset( nodes[i].child_states_1, 0, sizeof(unsigned char) * tree->dim_n );
-    memset( nodes[i].child_states_2, 0, sizeof(unsigned char) * tree->dim_n );
     nodes[i].length_determined = false;
     if(i < tree->leaf_n){  // we know the state..
       // Default to setting all the values to a rather large number,
       // that can just about be multiplied by 2... 
-      //      unsigned int cc = ((unsigned int)~0 >> 1);
       for(int j=0; j < (tree->al_size * tree->dim_n); ++j)
 	nodes[i].tree_lengths[j] = max_length;
       for(int j=0; j < tree->dim_n; ++j){
@@ -153,61 +143,70 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
 void ht_nodes_free(struct ht_node *nodes, int l){
   for(int i=0; i < l; ++i){
     free(nodes[i].tree_lengths);
-    free(nodes[i].child_states_1);
-    free(nodes[i].child_states_2);
   }
   free(nodes);
 }
 
-int sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n ){
-  Rprintf("sankoff_set_lengths %p\n", node);
+
+void sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n ){
   if( node->length_determined )
-    return(2);
+    return;
   
   // at some point we want to merge the information from two children..
   struct ht_node *children[3];
   memset( children, 0, sizeof( struct ht_node* ) * 3 );
   int child_count = 0;
   for( int i=0; i < 3; ++i ){
-    Rprintf("node: %p edge -> %p  is_child: %d\n", node, node->edges[i], node->is_child[i]);
     if( node->edges[i] && node->is_child[i] ){
-      int n = sankoff_set_lengths( node->edges[i], sub_matrix, al_offset, al_size, dim_n );
-      Rprintf("n is %d\n", n);
-      if(n == 2 && node->edges[i]->length_determined){
+      sankoff_set_lengths( node->edges[i], sub_matrix, al_offset, al_size, dim_n );
+      if(node->edges[i]->length_determined){
 	children[ child_count ] = node->edges[i];
 	child_count++;
       }
     }
   }
-  Rprintf("child_count: %d\n", child_count);
-  // we need two children to do something reasonable.. With three children we are not sure what to do.
-  if(child_count != 2)
-    return(child_count);
+  // if we have no children we can not have any state;
+  if(child_count == 0){
+    node->length_determined = false;
+    return;
+  }
+  // if we have only one child this is not a reasonable tree, but nevertheless we should simply
+  // have exactly the same state as the child.
+  if(child_count == 1){
+    memcpy( node->tree_lengths, children[0]->tree_lengths, sizeof(int) * al_size * dim_n );
+    node->length_determined = true;
+  }
 
-  // and here we do the actual merging. We should at some point accumulate the child counting..
+  // In order to handle an arbitrary number of children we define
+  // an array of pointers to the children length states and
+  // an array ints where we store the minimal length values.
+  int **c_l = malloc( sizeof(int*) * child_count);
+  int *ll = malloc(sizeof(int) * child_count);
+
+  // And merge the tree lengths
   for(int i=0; i < dim_n; ++i){
-    int *l1 = children[0]->tree_lengths + i * al_size;
-    int *l2 = children[1]->tree_lengths + i * al_size;
+    for(int j=0; j < child_count; ++j)
+      c_l[j] = children[j]->tree_lengths + i * al_size;
     int *l3 = node->tree_lengths + i * al_size;
-    // determine l3 from the values in l1 and l2...
+    // determine l3 from the values in c_l
     for(int j=0; j < al_size; ++j){  // j -> position in node
-      int ll1 = max_length;
-      int ll2 = max_length;
+      for(int k=0; k < child_count; ++k)
+	ll[k] = max_length;
       for(int k=0; k < al_size; ++k){ // k -> position in children
 	int cost = sub_matrix[ j * al_size + k ];
-	if( ll1 > l1[k] + cost ){
-	  ll1 = l1[k] + cost;
-	  node->child_states_1[i] = k;
-	}
-	if( ll2 > l2[k] + cost){
-	  ll2 = l2[k] + cost;
-	  node->child_states_2[i] = k;
+	for(int m=0; m < child_count; ++m){
+	  if( ll[m] > c_l[m][k] + cost )
+	    ll[m] = c_l[m][k] + cost;
 	}
       }
-      l3[j] = ll1 + ll2;
+      l3[j] = 0;
+      for(int k=0; k < child_count; ++k)
+	l3[j] += ll[k];
     }
   }
   node->length_determined = true;
+  free( c_l );
+  free( ll );
   // We can then go up this tree in the other direction. And make a prediction.
-  return(child_count);
+  return;
 }

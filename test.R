@@ -93,7 +93,7 @@ make.sub.matrix <- function(size){
 sub.matrix <- make.sub.matrix( 1 + 83 - 64 )
 sub.matrix[1,] <- 20L
 sub.matrix[,1] <- 20L
-sub.matrix[1,1] <- 0L
+##sub.matrix[1,1] <- 0L
 
 ## missing intron lengths, or intron lengths that are less than 2 will
 ## here be considered as missing. That is, that there is no penalty to merge a missing
@@ -102,13 +102,24 @@ sub.matrix[1,1] <- 0L
 
 dyn.load( "src/max_parsimony.so" )
 
-tmp <- .Call("sankoff", dists.nj$edge, c(38L, 20L), sub.matrix, c(64L, 20L), int.sa )
+system.time(
+    tmp <- .Call("sankoff", dists.nj$edge, c(38L, 20L), sub.matrix, c(64L, 20L), int.sa )
+)
+##  user  system elapsed 
+## 1.741   0.004   1.745
+## That is pretty damn slow for a reasonably small tree; though note that
+## the scaling is actually by the node_no * dim_no * al_size^2, 
+## 20 * 20 * 38 * nchar(int.sa[1]) / 1e6
+## 998.89
+## So that is about 1e9 steps, so then the performance is not that far off
+## what is achievable within a single thread.
              
 
 ## to confirm the behaviour of this I want to draw with more labels..
 
 nj.lines <- function(tree){
     y <- vector(mode='numeric', length=nrow(tree$edge))
+    nodes <- y
     x <- matrix(0, nrow=nrow(tree$edge), ncol=2)
     v.lines <- matrix(nrow=0, ncol=3)
     leaf.b <- tree$edge[,2] < min(tree$edge[,1])
@@ -119,6 +130,7 @@ nj.lines <- function(tree){
     visit.tree <- function(root, r.x ){
         ## child.i is wrong. lets call it this.i
         this.i <- which( tree$edge[,2] == root )
+        nodes[this.i] <<- root
         root.i <- which( tree$edge[,1] == root )
         if(!length(root.i)){
             return(y[ this.i ])
@@ -131,18 +143,56 @@ nj.lines <- function(tree){
             child.y[i] <- visit.tree( children[i], x[root.i[i], 2] )
         y[ this.i ] <<- mean(child.y)
         v.lines <<- rbind(v.lines, c(x[ root.i[1], 1], min(child.y), max(child.y)))
-        return( y[this.i] )
+        ##return( y[this.i] )
+        return( mean(child.y) )
     }
-    visit.tree(root, 0)
-    list('x'=x, 'y'=y, 'v'=v.lines)
+    y.root <- visit.tree(root, 0)
+    nodes <- c(nodes, root)
+    x <- rbind(x, c(-max(x)/50, 0))
+    y <- c(y, y.root)
+    list('x'=x, 'y'=y, 'nodes'=nodes, 'v'=v.lines)
 }
 
-tmp.l <- nj.lines(dists.nj)
+dev.set(2)
+plot( dists.nj )
 usr <- par("usr")
 
 dev.set(3)
+tmp.l <- nj.lines(dists.nj)
 plot.new()
 plot.window( xlim=usr[1:2], ylim=usr[3:4], xaxs='i', yaxs='i')
 segments( tmp.l$x[,1], tmp.l$y, tmp.l$x[,2], tmp.l$y )
-
 segments( tmp.l$v[,1], tmp.l$v[,2], tmp.l$v[,1], tmp.l$v[,3] )
+text( tmp.l$x[,2], tmp.l$y, tmp.l$nodes, pos=4 )
+b <- tmp.l$nodes <= length(dists.nj$tip.label)
+text( tmp.l$x[b,2] + 0.015, tmp.l$y[b], dists.nj$tip.label[ tmp.l$nodes[b]], pos=4 )
+
+## the tmp structure contains the results of the sankoff maximumn parsimony..
+## as a list where the ith entry refers to the ith node in the tree (the label in nodes)
+## note that 21 is incorrect; as we both do not have a proper node for the root and
+## because we haven't merged the correct thing there..
+
+## to get the lengths associated with the i'th intron
+for( i in 1:ncol(tmp[[1]][[2]])){
+    plot.new()
+    plot.window( xlim=usr[1:2], ylim=usr[3:4], xaxs='i', yaxs='i')
+    segments( tmp.l$x[,1], tmp.l$y, tmp.l$x[,2], tmp.l$y )
+    segments( tmp.l$v[,1], tmp.l$v[,2], tmp.l$v[,1], tmp.l$v[,3] )
+    b <- tmp.l$nodes <= length(dists.nj$tip.label)
+    text( tmp.l$x[b,2] + 0.015, tmp.l$y[b], dists.nj$tip.label[ tmp.l$nodes[b]], pos=4 )
+    ##
+    int.inf <- sapply( tmp[ tmp.l$nodes ], function(x){ x[[2]][,i] })
+    cols <- apply( int.inf, 2, function(x){ ifelse(x == min(x), 'black', 'grey') })
+    for(j in 1:ncol(int.inf)){
+        x2 <- tmp.l$x[j,2]
+        x1 <- x2 + with(par(), diff(usr[1:2])) / 75
+        y1 <- tmp.l$y[j] + (1:nrow(int.inf) - nrow(int.inf) / 2) / (1 + nrow(int.inf))
+        yd <- y1[2] - y1[1]
+        rect( x1, y1, x2, y1 + yd, col=cols[,j], border=NA )
+    }
+    text( tmp.l$x[,2], tmp.l$y, tmp.l$nodes, pos=4 )
+    inpt <- readline(paste(i, ": "))
+    if(inpt == 'q')
+        break
+}
+    

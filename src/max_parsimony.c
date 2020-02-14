@@ -78,7 +78,7 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
   struct ht_node* nodes = make_nodes( &tree, sub_matrix, &root_i);
 
   if(root_i >= 0){
-    int n = sankoff_set_lengths( nodes + root_i, sub_matrix, al_offset, al_size, dim_n );
+    sankoff_set_lengths( nodes + root_i, sub_matrix, al_offset, al_size, dim_n );
   }
   
   // That should give us a tree with distances in all the roots. We haven't yet solved

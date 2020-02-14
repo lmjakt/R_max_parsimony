@@ -47,9 +47,13 @@ struct ht_node {
   // The child states from which the tree lengths were inferred
   // these will have the same dimensions as tree_lengths, but we
   // can use char as the substitution matrix and the leaf_states are encoded
-  // as chars.. 
-  unsigned char *child_states_1;
-  unsigned char *child_states_2;
+  // as chars..
+  // The child states are not that useful for two reasons; one is that we may
+  // have many states with a minimal score; the other is that we may in fact
+  // have three children (true for a root node). This makes it easir to redo
+  // the analysis when going downstream.
+  /* unsigned char *child_states_1; */
+  /* unsigned char *child_states_2; */
   unsigned int edge_n;  // maximum of three, so wasteful to make an int
   bool is_leaf;  // 0 or 1
   bool length_determined;
@@ -68,6 +72,6 @@ struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_
 
 struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i);
 void ht_nodes_free(struct ht_node *nodes, int l);
-int sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n);
+void sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n);
 
 #endif
