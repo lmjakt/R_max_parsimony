@@ -78,7 +78,10 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
   struct ht_node* nodes = make_nodes( &tree, sub_matrix, &root_i);
 
   if(root_i >= 0){
-    sankoff_set_lengths( nodes + root_i, sub_matrix, al_offset, al_size, dim_n );
+    sankoff_set_lengths( nodes + root_i, sub_matrix, al_size, dim_n );
+    Rprintf("Calling infer_states\n");
+    sankoff_infer_states( nodes + root_i, sub_matrix, al_size, dim_n );
+    Rprintf("infer_states returned\n");
   }
   
   // That should give us a tree with distances in all the roots. We haven't yet solved
@@ -90,18 +93,27 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
     // a matrix edges_i 3 columns * 2 (the indices of the edges, and is child)
     // a matrix of the tree_lengths al_size * dim_n (dim_n in columns)
     // we can add the child states later, but first let us see how this works.. 
-    SET_VECTOR_ELT(ret_data, i, allocVector(VECSXP, 2));
+    SET_VECTOR_ELT(ret_data, i, allocVector(VECSXP, 3));
     SEXP elt = VECTOR_ELT(ret_data, i);
     // I think that allocMatrix should be safe with a zero size. But we'll find out
+    // Edges connected to the node
     SET_VECTOR_ELT(elt, 0, allocMatrix( INTSXP, nodes[i].edge_n, 2 ));
+    // The tree lenghts for the different states
     SET_VECTOR_ELT(elt, 1, allocMatrix( INTSXP, al_size, dim_n ));
+    // The inferred states and the size of the shift from one state to the
+    // other. (directional)
+    SET_VECTOR_ELT(elt, 2, allocMatrix( INTSXP, dim_n, 2 ));
     int *node_edges = INTEGER(VECTOR_ELT(elt, 0));
     int *node_lengths = INTEGER(VECTOR_ELT(elt, 1));
+    int *inferred_states = INTEGER(VECTOR_ELT(elt, 2));
+    int *state_delta = inferred_states + dim_n;
     for(int j=0; j < nodes[i].edge_n; ++j){
       node_edges[j] = nodes[i].edges_i[j] + 1;  // possibly plus 1?
       node_edges[j + nodes[i].edge_n] = (int)nodes[i].is_child[j];
     }
     memcpy( node_lengths, nodes[i].tree_lengths, sizeof(int) * al_size * dim_n );
+    memcpy( inferred_states, nodes[i].inferred_state, sizeof(int) * dim_n );
+    memcpy( state_delta, nodes[i].state_delta, sizeof(int) * dim_n );
   }
   // But lets see if we can compile it first.
   ht_nodes_free( nodes, tree.node_n );

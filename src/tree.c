@@ -93,7 +93,11 @@ struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_
 struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
   struct ht_node *nodes = malloc( sizeof(struct ht_node) * tree->node_n );
   memset( nodes, 0, sizeof(struct ht_node) * tree->node_n );
-  // then we go through the parent and child arrays.. and assign.
+  // set the node indices so that we can interrogate for debugging purposes
+  for(int i=0; i < tree->node_n; ++i)
+    nodes[i].node_i = i;
+  // then we go through the parent and child arrays.. and assign the
+  // edges.
   for(int i=0; i < tree->edge_n; ++i){
     int p_i = tree->edge_parent[i] - 1;
     int c_i = tree->edge_child[i] - 1;
@@ -123,6 +127,8 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
     if(p_count == 0)
       *root_i = i;
     nodes[i].tree_lengths = malloc( sizeof(unsigned int) * tree->al_size * tree->dim_n );
+    nodes[i].inferred_state = malloc( sizeof(int) * tree->dim_n );
+    nodes[i].state_delta = malloc( sizeof(int) * tree->dim_n );
     nodes[i].length_determined = false;
     if(i < tree->leaf_n){  // we know the state..
       // Default to setting all the values to a rather large number,
@@ -132,6 +138,7 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
       for(int j=0; j < tree->dim_n; ++j){
 	int o = tree->leaf_states[i][j] - tree->al_offset;
 	nodes[i].tree_lengths[ j * tree->al_size + o  ] = 0;
+	nodes[i].inferred_state[j] = 0;
       }
       nodes[i].length_determined = true;
     }
@@ -143,12 +150,14 @@ struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i){
 void ht_nodes_free(struct ht_node *nodes, int l){
   for(int i=0; i < l; ++i){
     free(nodes[i].tree_lengths);
+    free(nodes[i].inferred_state);
+    free(nodes[i].state_delta);
   }
   free(nodes);
 }
 
 
-void sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n ){
+void sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_size, int dim_n ){
   if( node->length_determined )
     return;
   
@@ -156,9 +165,9 @@ void sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, 
   struct ht_node *children[3];
   memset( children, 0, sizeof( struct ht_node* ) * 3 );
   int child_count = 0;
-  for( int i=0; i < 3; ++i ){
+  for( int i=0; i < node->edge_n; ++i ){
     if( node->edges[i] && node->is_child[i] ){
-      sankoff_set_lengths( node->edges[i], sub_matrix, al_offset, al_size, dim_n );
+      sankoff_set_lengths( node->edges[i], sub_matrix, al_size, dim_n );
       if(node->edges[i]->length_determined){
 	children[ child_count ] = node->edges[i];
 	child_count++;
@@ -209,4 +218,70 @@ void sankoff_set_lengths( struct ht_node *node, int *sub_matrix, int al_offset, 
   free( ll );
   // We can then go up this tree in the other direction. And make a prediction.
   return;
+}
+
+// Since more than one index can encode the value the simplest thing would
+// seem to be to do a kernel weight averaging of the individual positions.
+// This, though feels like a complete overkill.
+// It is probably just as well to take the average of the indices of the
+// minimal values..
+// This is biassed towards the small scale. It would make sense to either
+// return i*2, or to make it a float. (But I cannot turn it into a char in that
+// case. Let's see what we can do.
+int min_index(int *values, int n){
+  if( n <= 0 )
+    return(0);
+  int min_v = values[0];
+  for(int i=0; i < n; ++i)
+    min_v = (min_v > values[i] ? values[i] : min_v);
+  int min_i_sum = 0;
+  int min_n = 0;
+  for(int i=0; i < n; ++i){
+    if(values[i] == min_v){
+      min_i_sum += i;
+      min_n++;
+    }
+  }
+  return( min_i_sum / min_n );
+}
+
+// go from the root and infer the most parsimonious state of each node
+// A recursive function that goes through all the nodes.. and looks back at the state of it's
+// parent node selecting the cheapest state that results in the 
+void sankoff_infer_states(struct ht_node *node, int *sub_matrix, int al_size, int dim_n){
+  // obtain the child nodes
+  struct ht_node *children[3];
+  struct ht_node *parent = 0;
+  int child_no = 0;
+  for(int i=0; i < node->edge_n; ++i){
+    if(node->is_child[i]){
+      children[child_no] = node->edges[i];
+      child_no++;
+    }else{
+      parent = node->edges[i];
+    }
+  }
+  // If we do not have a parent, then all we need to do is to decide a minimum state;
+  // It seems that we might wish to use a min index function here,
+  if(!parent){
+    for(int i=0; i < dim_n; ++i){
+      node->inferred_state[i] = min_index( node->tree_lengths + (al_size * i), al_size );
+      node->state_delta[i] = 0;
+    }
+  }else{
+    int *trans_cost = malloc(sizeof(int) * al_size);
+    for(int i=0; i < dim_n; ++i){
+      int p_state = parent->inferred_state[i];
+      for(int j=0; j < al_size; ++j){
+	trans_cost[j] = sub_matrix[ p_state * al_size + j ] + node->tree_lengths[ i * al_size + j ];
+      }
+      node->inferred_state[i] = min_index( trans_cost, al_size );
+      node->state_delta[i] = node->inferred_state[i] - p_state;
+    }
+    free(trans_cost);
+  }
+  // then recurse to the children
+  for(int i=0; i < child_no; ++i)
+    sankoff_infer_states( children[i], sub_matrix, al_size, dim_n );
+  // and hope that everything works out fine.. 
 }

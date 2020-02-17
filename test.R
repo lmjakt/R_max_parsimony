@@ -105,8 +105,9 @@ dyn.load( "src/max_parsimony.so" )
 system.time(
     tmp <- .Call("sankoff", dists.nj$edge, c(38L, 20L), sub.matrix, c(64L, 20L), int.sa )
 )
+
 ##  user  system elapsed 
-## 1.741   0.004   1.745
+##  2.004   0.000   2.004 
 ## That is pretty damn slow for a reasonably small tree; though note that
 ## the scaling is actually by the node_no * dim_no * al_size^2, 
 ## 20 * 20 * 38 * nchar(int.sa[1]) / 1e6
@@ -179,7 +180,7 @@ for( i in 1:ncol(tmp[[1]][[2]])){
     segments( tmp.l$x[,1], tmp.l$y, tmp.l$x[,2], tmp.l$y )
     segments( tmp.l$v[,1], tmp.l$v[,2], tmp.l$v[,1], tmp.l$v[,3] )
     b <- tmp.l$nodes <= length(dists.nj$tip.label)
-    text( tmp.l$x[b,2] + 0.015, tmp.l$y[b], dists.nj$tip.label[ tmp.l$nodes[b]], pos=4 )
+    text( tmp.l$x[b,2] + 0.015, tmp.l$y[b], dists.nj$tip.label[ tmp.l$nodes[b]], pos=4, col='red' )
     ##
     int.inf <- sapply( tmp[ tmp.l$nodes ], function(x){ x[[2]][,i] })
     cols <- apply( int.inf, 2, function(x){ ifelse(x == min(x), 'black', 'grey') })
@@ -190,7 +191,7 @@ for( i in 1:ncol(tmp[[1]][[2]])){
         yd <- y1[2] - y1[1]
         rect( x1, y1, x2, y1 + yd, col=cols[,j], border=NA )
     }
-    text( tmp.l$x[,2], tmp.l$y, tmp.l$nodes, pos=4 )
+    text( tmp.l$x[,2], tmp.l$y, tmp.l$nodes, pos=4, col='red' )
     inpt <- readline(paste(i, ": "))
     if(inpt == 'q')
         break

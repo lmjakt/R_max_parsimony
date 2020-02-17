@@ -41,9 +41,12 @@ struct h_tree {
 // and leaf nodes have only a single parent connection. 
 struct ht_node {
   struct ht_node* edges[3];
+  int node_i; 
   int edges_i[3];
   bool is_child[3]; 
   int *tree_lengths;   // signed so we can pass it back to R.
+  int *inferred_state; // one for every dimension.. 
+  int *state_delta;  // int because of R; signed is nice as well.
   // The child states from which the tree lengths were inferred
   // these will have the same dimensions as tree_lengths, but we
   // can use char as the substitution matrix and the leaf_states are encoded
@@ -72,6 +75,7 @@ struct h_tree make_tree(int *edge_child, int *edge_parent, int edge_n, int node_
 
 struct ht_node* make_nodes(struct h_tree *tree, int *sub_matrix, int *root_i);
 void ht_nodes_free(struct ht_node *nodes, int l);
-void sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_offset, int al_size, int dim_n);
+void sankoff_set_lengths(struct ht_node *node, int *sub_matrix, int al_size, int dim_n);
+void sankoff_infer_states(struct ht_node *node, int *sub_matrix, int al_size, int dim_n);
 
 #endif
