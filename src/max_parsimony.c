@@ -89,12 +89,19 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
   // But in any case it will be necessary to somehow validat the tree before we do anything
   // else.
   SEXP ret_data = PROTECT(allocVector( VECSXP, tree.node_n ));
+  // each element of the vector will have three entries, edge, length and state
+  const char *names[3] = {"edge", "length", "state"};
+  SEXP names_r = PROTECT(allocVector(STRSXP, 3));
+  for(int i=0; i < length(names_r); ++i)
+    SET_STRING_ELT(names_r, i, mkChar(names[i]));
+  
   for(int i=0; i < tree.node_n; ++i){
     // a matrix edges_i 3 columns * 2 (the indices of the edges, and is child)
     // a matrix of the tree_lengths al_size * dim_n (dim_n in columns)
     // we can add the child states later, but first let us see how this works.. 
     SET_VECTOR_ELT(ret_data, i, allocVector(VECSXP, 3));
     SEXP elt = VECTOR_ELT(ret_data, i);
+    setAttrib( elt, R_NamesSymbol, names_r );
     // I think that allocMatrix should be safe with a zero size. But we'll find out
     // Edges connected to the node
     SET_VECTOR_ELT(elt, 0, allocMatrix( INTSXP, nodes[i].edge_n, 2 ));
@@ -119,6 +126,16 @@ SEXP sankoff(SEXP tree_r, SEXP tree_props_r, SEXP sub_matrix_r, SEXP alphabet_r,
   ht_nodes_free( nodes, tree.node_n );
 
   // make a dummy data set..
-  UNPROTECT(1);
+  UNPROTECT(2);
   return(ret_data);
+}
+
+static const R_CallMethodDef callMethods[] = {
+  {"sankoff", (DL_FUNC)&sankoff, 5},
+  {NULL, NULL, 0}
+};
+
+void R_init_max_parsimony(DllInfo *info)
+{
+  R_registerRoutines(info, NULL, callMethods, NULL, NULL);
 }
