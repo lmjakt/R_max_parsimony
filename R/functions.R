@@ -10,20 +10,15 @@ encode.dist <- function(data, offset=64, conversion=as.integer, missing.value=0)
 }
 
 
-make.sub.matrix <- function(size, missing=NA){
+make.sub.matrix <- function(size){
     m <- matrix(nrow=size, ncol=size)
     for(i in 1:size){
         for(j in 1:size){
             m[i,j] <- as.integer(abs(i-j))
         }
     }
-    ## any conversion to a missing value has maximal distance
-    ## including missing to missing. This means that missing
-    ## values end up having minimum information.
-    if(!is.na(missin)){
-        r <- range(m)
-        m[missing,] <- as.integer(1 + diff(r))
-    }
+    ## missing value encoding should be handled by the user as it is
+    ## difficult to predict how this should be done here.
     m
 }
 
